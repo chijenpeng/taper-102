@@ -50,13 +50,15 @@ old level and bias; states without Link or 0 VU load with Link off and 0 VU at �
 The following parts are not taken from the manual or from a measurement of a machine. Provenance labels:
 
 - **Head contour: derived from one published curve.** No contour data for the ATR-102 reproduce head was
-  found other than one published 30 ips response curve. The low-frequency "bump" is a physical model of
+  found other than Jack Endino's published ATR-102 response measurement (1/2-inch two-track heads, 30 ips);
+  the plug-in models the 1/4-inch two-track machine, so the curve is a stand-in for its contour. The
+  low-frequency "bump" is a physical model of
   flux pickup from the tape either side of the head gap, with two terms fitted to that curve (rms error
   0.21 dB against the needed contour, about 0.6 dB at worst). Its frequencies scale with tape speed for
   15 ips, which is consistent with, but not a measurement of, reports of the 15 ips bump near 30 to 40 Hz.
   It is fixed in the chain and not a control.
 - **Record gap: calibrated.** The record gap (7.62 µm) was calibrated so that the 15 ips high-frequency
-  response matches a published measurement (about −3 dB at 26 kHz on 456); the 12.7 µm gap used earlier
+  response matches the Audio magazine test of the ATR-100 (May 1977): about −3 dB at 26 kHz, 15 ips; the 12.7 µm gap used earlier
   lost twice as much there. The reproduce head geometry (spacing 0.25 µm, thickness 12.7 µm, gap
   3.05 µm) is a chosen model of the head.
 - **Second harmonic: chosen within the manual's limit.** The tape curve is exactly odd, so a small
@@ -75,9 +77,9 @@ The following parts are not taken from the manual or from a measurement of a mac
   (levels, bias and overbias curves, third-harmonic points, high-frequency response); a real machine, tape
   batch and head will differ, in particular in bias set-up, noise, wow and flutter, which are not modelled.
 - **Operating level.** The 3 % third-harmonic point lands at about +9.5 to +10.1 dB over 0 VU on 456 at
-  370 nWb/m; on ATR Master at 320 nWb/m it is about +9.7 to +10.0 dB, about 2.3 dB under the figure on the
-  manual's sheet.
-- **Head contour.** Against the one published 30 ips curve the end-to-end error is within 0.63 dB (rms
+  370 nWb/m; on ATR Master at 320 nWb/m it is about +9.7 to +10.0 dB, about 2.3 dB under the +12 dB on the ATR Master
+  tape datasheet (3 % THD at +12 dB re 320 nWb/m).
+- **Head contour.** Against that 30 ips curve the end-to-end error is within 0.63 dB (rms
   0.20 dB), with a dip near 120 Hz that the curve does not have. The 15 ips contour is that curve scaled
   by speed, not measured.
 - **Second harmonic at low levels.** The model's second harmonic is a smooth curve; it does not follow the

@@ -1,10 +1,10 @@
 #pragma once
-// ATR-102 runtime medium (plan phase B4b): a cheap reproduction of the R2 spatial record reference (tools/atr102/record2d) for the
+// ATR-102 runtime medium: a cheap reproduction of the spatial record model for the
 // Taper 102 controls: Tape {456, ATR Master}, Speed {15, 30 ips}, Bias (overbias in dB over the manual alignment point) and record level.
 //
 //   in --> gain (record level) --> [oversample] --> Phi(u; tape, speed, bias) --> record-zone loss filter --> [decimate] --> out
 //
-// * Phi is the odd, memoryless remanence curve: the long-wavelength flux of a constant drive u, tabulated offline from R2 on a uniform
+// * Phi is the odd, memoryless remanence curve: the long-wavelength flux of a constant drive u, tabulated offline from the spatial record model on a uniform
 //   grid of u (u = 1 is the operating level, grid step kUStep) at kNumBias bias nodes; blended across bias with a cubic and read with a
 //   cubic (Catmull-Rom) interpolation. Output is normalised to the fundamental of an operating-level sine at the aligned bias, i.e.
 //   an operating-level sine with the aligned bias comes out at about 1.0 amplitude (-14.0 dB / -14.86 dB re saturation flux for 456 / ATR Master).
@@ -15,7 +15,7 @@
 //   (the reproduce chain has no DC path: the head's EMF is the derivative of flux).
 // * The record-zone loss filter is a minimum-phase 3-pole/1-zero IIR (AtrModelMath.h) whose parameters depend on bias; it contains only the
 //   loss of the recording process relative to long wavelengths. It does NOT contain spacing, thickness or gap losses of the reproduce head
-//   (B5 adds those from Taper's analytic A(f)).
+//   (the chain adds those from its analytic A(f)).
 // * Input convention: a sample of amplitude 1.0 is the peak of an operating-level sine; recordLevelDb scales the drive in dB.
 //
 // Threading: prepare() is not real-time safe. setControls() is meant for the message thread (it designs the curve blend and the filters, no
@@ -53,7 +53,7 @@ public:
     static constexpr double kCrossfadeSeconds = 0.02;
     static constexpr double kGainSmoothSeconds = 0.005;
 
-    // Oversampling that keeps the internal rate near or above 176 kHz: 4x below 66 kHz, 2x below 130 kHz, else 1x (see README, aliasing).
+    // Oversampling that keeps the internal rate near or above 176 kHz: 4x below 66 kHz, 2x below 130 kHz, else 1x (to keep aliasing low).
     static int recommendedOversampling(double sampleRate) noexcept { return sampleRate < 66000.0 ? 4 : (sampleRate < 130000.0 ? 2 : 1); }
 
     // oversampling: 1, 2 or 4. Not real-time safe.

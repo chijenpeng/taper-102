@@ -21,7 +21,7 @@ struct EditorFonts
     juce::Typeface::Ptr inter, mono;
 };
 
-// Taper 102 palette: "meter-panel black" (the owner's choice, colour language of the ATR-102 panel: near-black panel, warm pale lettering,
+// Taper 102 palette: "meter-panel black" (chosen for the plug-in, colour language of the ATR-102 panel: near-black panel, warm pale lettering,
 // amber meter fill); values chosen for the plug-in, not measured, no calibrated-meter claim.
 namespace Theme
 {

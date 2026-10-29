@@ -1,5 +1,5 @@
 #pragma once
-// Taper 102 chain (phase B5): small, dependency-free DSP helpers. Analog pole/zero lists (B1's fits, the reproduce-loss fit, the head-bump
+// Taper 102 chain: small, dependency-free DSP helpers. Analog pole/zero lists (the circuit fits, the reproduce-loss fit, the head-bump
 // fit) become cascades of digital biquads by the bilinear transform with every root pre-warped so that its corner stays where the analog
 // prototype puts it; the cascade gain is matched to the analog magnitude at a reference frequency (and its polarity to the analog phase).
 #include <algorithm>

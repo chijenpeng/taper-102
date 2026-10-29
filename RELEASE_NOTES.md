@@ -16,11 +16,11 @@ circuits, with the machine's alignment procedure done in software.
   192 kHz. Latency 5 samples at 44.1 and 48 kHz, 4 at 96 kHz, 0 at 176.4 kHz and above.
 - **Checked** against the manual's response envelopes and published curves after alignment; 0 VU in
   returns 0 VU out in all 24 tape, equalisation and operating-level combinations. No machine was
-  measured. The head contour (derived from one published curve), the record gap (calibrated), the second
+  measured. The head contour (derived from Jack Endino's published 30 ips curve), the record gap (calibrated to the Audio magazine test of May 1977), the second
   harmonic (chosen within the manual's limit), the 0 VU choices and the palette are choices of this
   plug-in; the README says which.
 - **Known limits.** No noise, wow or flutter. The 3 % distortion point on ATR Master is about 2.3 dB
-  under the manual's figure. The 15 ips head contour is scaled from a 30 ips curve. Details are in the
+  under the tape datasheet's +12 dB. The 15 ips head contour is scaled from a 30 ips curve. Details are in the
   README.
 
 Packages:

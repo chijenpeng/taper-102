@@ -14,8 +14,8 @@ inline double catmullRom(double p0, double p1, double p2, double p3, double f) n
     return p1 + 0.5 * f * (p2 - p0 + f * (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3 + f * (3.0 * (p1 - p2) + p3 - p0)));
 }
 
-// Reproduce-side losses of B4a's playback model for a uniformly magnetised coating (spacing, thickness, gap), used by the harness
-// to put the record-zone filter and the memoryless curve on the same footing as R2's playback; B5 will use Taper's own A(f).
+// Reproduce-side losses of the playback model for a uniformly magnetised coating (spacing, thickness, gap), used to put the
+// record-zone filter and the memoryless curve on the same footing as the spatial record model's playback.
 struct PlaybackGeometry { double spacing = 0.25e-6, thickness = 12.7e-6, gap = 3.05e-6; };
 inline double playbackLoss(double f, double ipsSpeedMps, const PlaybackGeometry& g = {}) noexcept
 {

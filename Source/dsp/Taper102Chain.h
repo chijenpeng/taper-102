@@ -1,13 +1,13 @@
 #pragma once
-// Taper 102 chain (plan phase B5): record electronics -> medium (B4b) -> reproduce-head losses and head contour -> reproduce electronics,
+// Taper 102 chain: record electronics -> medium -> reproduce-head losses and head contour -> reproduce electronics,
 // one instance for up to two independent channels.
 //
-//   in (dBFS, 0 VU = -18 dBFS peak) -> Input dB -> record EQ (B1 fit, HF trim) -> clip (A6, 25.8 dB over 0 VU) -> AtrMedium
-//      -> playback loss A(f) -> head contour -> reproduce EQ (B1 fit, flux referred) -> level calibration -> Output dB
+//   in (dBFS, 0 VU = -18 dBFS peak) -> Input dB -> record EQ (circuit fit, HF trim) -> clip (25.8 dB over 0 VU) -> AtrMedium
+//      -> playback loss A(f) -> head contour -> reproduce EQ (circuit fit, flux referred) -> level calibration -> Output dB
 //
 // Everything between the oversampler's up and down filters runs at 4x (44.1/48 kHz hosts), 2x (88.2/96 kHz) or 1x (176.4 kHz and above), i.e.
 // at about 176-192 kHz, so the electronics fits (poles near 20-50 kHz) and the medium share one rate. The medium itself runs with its own
-// oversampling set to 1 at that internal rate (same filters and curves as B4b's recommended 4x/2x setting).
+// oversampling set to 1 at that internal rate (the medium's recommended 4x/2x setting).
 //
 // Units: AtrMedium takes 1.0 = peak of an operating-level sine (the reference fluxivity of its tape: 370 nWb/m for 456, 320 for ATR Master);
 // "0 VU" of this chain is the selected Operating level, so the medium's record level is 20 log10(selected / reference) dB.
@@ -46,16 +46,16 @@ struct Controls
 };
 
 inline constexpr double kZeroVuDbfs = -18.0;      // 0 VU = -18 dBFS (peak of a sine)
-inline constexpr double kRecordClipDbOverVu = 25.8;  // B1: A6 clips 25.8 dB above the operating level (manual: "26 dB")
+inline constexpr double kRecordClipDbOverVu = 25.8;  // the record amplifier clips 25.8 dB above the operating level (manual: "26 dB")
 inline constexpr double kRepro_HfPoleHz = 150e3;     // Approximation: makes the flux-referred reproduce chain proper (-0.08 dB at 20 kHz)
-inline constexpr double kR15PotK = 20.0 / 33.0;      // Derived: R15/R18 20 k loaded by R23 33 k, g(w) = w / (1 + w (1 - w) kR15PotK); matches B1's 0.5 fit to 0.0002
+inline constexpr double kR15PotK = 20.0 / 33.0;      // Derived: R15/R18 20 k loaded by R23 33 k, g(w) = w / (1 + w (1 - w) kR15PotK); matches the fitted 0.5 pot position to 0.0002
 
-// Weight of the pot-1.0 branch in H(w) = H0 + g (H1 - H0) (B1's pot 0.5 fit gives g = 0.4343, the loaded-pot law 0.4342).
+// Weight of the pot-1.0 branch in H(w) = H0 + g (H1 - H0) (the fitted pot 0.5 position gives g = 0.4343, the loaded-pot law 0.4342).
 inline double potWeight(double w) noexcept { w = std::min(std::max(w, 0.0), 1.0); return w / (1.0 + w * (1.0 - w) * kR15PotK); }
 
 inline Eq eqFor(Speed s, Eq e) noexcept { return s == Speed::Ips30 ? Eq::Aes30 : (e == Eq::Aes30 ? Eq::Nab15 : e); }
 inline double speedMps(Speed s) noexcept { return (s == Speed::Ips30 ? 30.0 : 15.0) * 0.0254; }
-inline double referenceNwbm(Tape t) noexcept { return t == Tape::Ampex456 ? 370.0 : 320.0; }  // medium's 1.0 (B3/B4a level mapping)
+inline double referenceNwbm(Tape t) noexcept { return t == Tape::Ampex456 ? 370.0 : 320.0; }  // medium's 1.0 (its level mapping)
 
 // ---- analog prototypes -------------------------------------------------------------------------------------------------------------
 inline int fitSet(Eq e) noexcept { return e == Eq::Aes30 ? 0 : (e == Eq::Iec15 ? 1 : 2); }
@@ -68,7 +68,7 @@ inline RootList fitRoots(const fits::Fit& f) noexcept
 }
 inline const fits::Fit& recordFit(Eq e, int pot /*0 or 2: pot 0.0 / 1.0*/) noexcept { return fits::kFits[3 + fitSet(e) * 3 + pot]; }
 
-// Flux-referred reproduce chain: B1's EMF -> line fit times s (EMF = jw flux) with one HF pole, unity gain at 1 kHz, positive at 1 kHz.
+// Flux-referred reproduce chain: the circuit's EMF -> line fit times s (EMF = jw flux) with one HF pole, unity gain at 1 kHz, positive at 1 kHz.
 // Applies the refit factors (zeros then poles; 0 = unchanged); a root's whole complex value is scaled, which keeps conjugate pairs conjugate.
 inline void applyScale(RootList& r, const RootScale& sc) noexcept
 {

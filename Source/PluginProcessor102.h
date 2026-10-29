@@ -8,7 +8,7 @@
 #include <mutex>
 #include <vector>
 
-// Taper 102: the Ampex ATR-102-derived record -> tape -> reproduce chain (tools/atr102/chain/Taper102Chain.h) as an AU / VST3 effect.
+// Taper 102: the Ampex ATR-102-derived record -> tape -> reproduce chain (Taper102Chain.h) as an AU / VST3 effect.
 //
 // Control path. Taper102Chain::setControls designs the electronics (filter cascades) and writes into a lock-free mailbox, so it runs on a
 // small background thread (ControlPusher, ~100 Hz) that pushes a snapshot whenever a parameter changed; the chain picks it up at the next
