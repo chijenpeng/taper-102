@@ -20,7 +20,8 @@ circuits, with the machine's alignment procedure done in software.
   harmonic (chosen within the manual's limit), the 0 VU choices and the palette are choices of this
   plug-in; the README says which.
 - **Known limits.** No noise, wow or flutter. The 3 % distortion point on ATR Master is about 2.3 dB
-  under the tape datasheet's +12 dB. The 15 ips head contour is scaled from a 30 ips curve. Details are in the
+  under the tape datasheet's +12 dB. The 15 ips head contour is scaled from a 30 ips curve. In Ableton Live
+  (VST3) Link occasionally moves Output in steps instead of following Input smoothly. Details are in the
   README.
 
 Packages:

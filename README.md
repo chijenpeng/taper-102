@@ -85,7 +85,10 @@ The following parts are not taken from the manual or from a measurement of a mac
 - **Second harmonic at low levels.** The model's second harmonic is a smooth curve; it does not follow the
   fine structure of the simulations behind it at low level.
 - **Latency.** The reported latency excludes the electronics' group delay (about 8 samples at 1 kHz).
-- **No Intel Mac runtime test, DAW-host test or Windows host test has been performed.**
+- **Link in some hosts.** In Ableton Live (VST3, macOS) Output usually follows Input, but occasionally
+  moves in steps instead of following the knob smoothly. Fixing this is planned.
+- **Hosts tested.** Ableton Live (VST3, macOS, Apple Silicon). No Intel Mac runtime test or Windows host
+  test has been performed.
 
 ## Build
 
