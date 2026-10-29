@@ -1,0 +1,126 @@
+name: Windows release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing draft release tag to build and upload to
+        required: true
+        default: v0.1.0
+        type: string
+
+jobs:
+  build:
+    if: github.repository == 'chijenpeng/taper-102' && github.event.repository.private == false
+    runs-on: windows-2022
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+
+    steps:
+      - name: Check out the requested release tag
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify release tag and checked-out commit
+        shell: pwsh
+        run: |
+          if ($env:RELEASE_TAG -notmatch '^v\d+\.\d+\.\d+$') {
+            throw "Expected a semantic version tag such as v0.1.0, got '$env:RELEASE_TAG'."
+          }
+          $head = (git rev-parse HEAD).Trim()
+          $tagCommit = (git rev-parse "$($env:RELEASE_TAG)^{commit}").Trim()
+          if ($LASTEXITCODE -ne 0 -or $head -ne $tagCommit) {
+            throw "Checked-out commit $head does not match tag $env:RELEASE_TAG ($tagCommit)."
+          }
+
+      - name: Configure native x64 Release build
+        shell: pwsh
+        run: >-
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          -DCMAKE_BUILD_TYPE=Release
+          -DCOPY_PLUGIN_AFTER_BUILD=OFF
+          "-DFETCHCONTENT_BASE_DIR=$env:RUNNER_TEMP/deps"
+
+      - name: Build plug-in, processor tests, and tools
+        shell: pwsh
+        run: cmake --build build --config Release --parallel 2
+
+      - name: Run native Windows regression tests
+        shell: pwsh
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Package VST3 and required notices
+        shell: pwsh
+        run: |
+          $version = $env:RELEASE_TAG.Substring(1)
+          $packageRoot = Join-Path $env:RUNNER_TEMP "taper-102-package"
+          $licenses = Join-Path $packageRoot "licenses"
+          $vst3Licenses = Join-Path $licenses "VST3-SDK"
+          $plugin = "build/Taper102_artefacts/Release/VST3/Taper 102.vst3"
+          if (-not (Test-Path -LiteralPath $plugin -PathType Container)) {
+            throw "Expected VST3 bundle was not built: $plugin"
+          }
+
+          New-Item -ItemType Directory -Force -Path $packageRoot, $licenses, $vst3Licenses | Out-Null
+          Copy-Item -LiteralPath $plugin -Destination (Join-Path $packageRoot "Taper 102.vst3") -Recurse
+          Copy-Item -LiteralPath README.md -Destination $packageRoot
+          Copy-Item -LiteralPath THIRD_PARTY_NOTICES.md -Destination $packageRoot
+          Copy-Item -LiteralPath Resources/fonts/Inter-LICENSE.txt -Destination $licenses
+          Copy-Item -LiteralPath Resources/fonts/JetBrainsMono-LICENSE.txt -Destination $licenses
+          $juce = Join-Path $env:RUNNER_TEMP "deps/juce-src"
+          if (-not (Test-Path -LiteralPath $juce -PathType Container)) {
+            throw "Expected fetched JUCE source was not found: $juce"
+          }
+          Copy-Item -LiteralPath (Join-Path $juce "LICENSE.md") -Destination (Join-Path $licenses "JUCE-LICENSE.md")
+
+          $sdk = Join-Path $juce "modules/juce_audio_processors/format_types/VST3_SDK"
+          Copy-Item -LiteralPath "$sdk/LICENSE.txt" -Destination (Join-Path $vst3Licenses "VST3-SDK-LICENSE.txt")
+          Copy-Item -LiteralPath "$sdk/base/LICENSE.txt" -Destination (Join-Path $vst3Licenses "base-LICENSE.txt")
+          Copy-Item -LiteralPath "$sdk/pluginterfaces/LICENSE.txt" -Destination (Join-Path $vst3Licenses "pluginterfaces-LICENSE.txt")
+          Copy-Item -LiteralPath "$sdk/public.sdk/LICENSE.txt" -Destination (Join-Path $vst3Licenses "public-sdk-LICENSE.txt")
+          Copy-Item -LiteralPath "$sdk/VST3_License_Agreement.pdf" -Destination $vst3Licenses
+
+          $sha = (git rev-parse HEAD).Trim()
+          @(
+            "Product: Taper 102"
+            "Version: $version"
+            "Release tag: $env:RELEASE_TAG"
+            "Source commit: $sha"
+            "Build: Windows x64 native MSVC Release"
+            "Tests: CTest passed on windows-2022"
+            "Code signing: unsigned"
+          ) | Set-Content -LiteralPath (Join-Path $packageRoot "BUILD-INFO.txt") -Encoding utf8
+
+          @(
+            "Taper 102 $version - Windows x64 VST3"
+            ""
+            "Copy the entire Taper 102.vst3 bundle folder into C:\Program Files\Common Files\VST3 (administrator approval may be required), then rescan your VST3 host. Keep the bundle folder structure intact. This is an unsigned x64 plug-in for a 64-bit host."
+            ""
+            "Requires the Microsoft Visual C++ v14 x64 Redistributable. If your system lacks MSVCP140.dll or VCRUNTIME140.dll, install the current x64 package from Microsoft: https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist"
+            ""
+            "See README.md for the controls and limits, THIRD_PARTY_NOTICES.md and licenses/ for dependency notices, and BUILD-INFO.txt for build provenance."
+          ) | Set-Content -LiteralPath (Join-Path $packageRoot "INSTALL.txt") -Encoding utf8
+
+          $zipName = "taper-102-$version-windows-x64.zip"
+          $zipPath = Join-Path $env:RUNNER_TEMP $zipName
+          Compress-Archive -Path (Join-Path $packageRoot "*") -DestinationPath $zipPath -CompressionLevel Optimal
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zipPath).Hash.ToLower()
+          [System.IO.File]::WriteAllText("$zipPath.sha256", "$hash  $zipName`n")
+          "PACKAGE_PATH=$zipPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Upload package to the existing draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $isDraft = gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json isDraft --jq .isDraft
+          if ($LASTEXITCODE -ne 0 -or $isDraft.Trim() -ne "true") {
+            throw "Release $env:RELEASE_TAG must already exist as a draft."
+          }
+          gh release upload $env:RELEASE_TAG $env:PACKAGE_PATH "$($env:PACKAGE_PATH).sha256" --repo $env:GITHUB_REPOSITORY --clobber
