@@ -53,7 +53,9 @@ juce_add_plugin(Taper102
     COPY_PLUGIN_AFTER_BUILD ${COPY_PLUGIN_AFTER_BUILD})
 
 # Third-party licence texts shipped inside the AU and VST3 bundles.
-juce_add_bundle_resources_directory(Taper102_AU Resources/Notices)
+if(TARGET Taper102_AU) # AU exists only on macOS
+  juce_add_bundle_resources_directory(Taper102_AU Resources/Notices)
+endif()
 juce_add_bundle_resources_directory(Taper102_VST3 Resources/Notices)
 
 # Inter and JetBrains Mono, both SIL Open Font License (licences are next to the fonts).
