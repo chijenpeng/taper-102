@@ -73,6 +73,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout Taper102AudioProcessor::crea
     return layout;
 }
 
+struct Taper102AudioProcessor::GestureWatcher final : juce::AudioProcessorParameter::Listener
+{
+    explicit GestureWatcher(Taper102AudioProcessor& o) : owner(o) {}
+    void parameterValueChanged(int, float) override {}
+    void parameterGestureChanged(int, bool starting) override { owner.inputGesture(starting); }
+    Taper102AudioProcessor& owner;
+};
+
 Taper102AudioProcessor::Taper102AudioProcessor()
     : juce::AudioProcessor(BusesProperties().withInput("Input", juce::AudioChannelSet::stereo(), true)
         .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
@@ -82,13 +90,29 @@ Taper102AudioProcessor::Taper102AudioProcessor()
         values_[index] = parameters.getRawParameterValue(ids[index]);
     lastInput_.store(values_[kInput]->load());
     parameters.addParameterListener("input_db", this);
+    gestureWatcher_ = std::make_unique<GestureWatcher>(*this);
+    parameters.getParameter("input_db")->addListener(gestureWatcher_.get());
     startTimer(50);
 }
 Taper102AudioProcessor::~Taper102AudioProcessor()
 {
     stopTimer();
+    cancelPendingUpdate();
+    parameters.getParameter("input_db")->removeListener(gestureWatcher_.get());
     parameters.removeParameterListener("input_db", this);
     stopPusher();
+}
+
+void Taper102AudioProcessor::inputGesture(bool starting)
+{
+    inputGestureOpen_.store(starting);
+    if (starting) return;
+    applyPendingLink();
+    if (outputGestureOpen_)
+    {
+        outputGestureOpen_ = false;
+        if (auto* output = parameters.getParameter("output_db")) output->endChangeGesture();
+    }
 }
 
 void Taper102AudioProcessor::parameterChanged(const juce::String&, float newValue)
@@ -97,14 +121,15 @@ void Taper102AudioProcessor::parameterChanged(const juce::String&, float newValu
     if (restoring_.load() || applyingLink_ || values_[kLink]->load(std::memory_order_relaxed) < 0.5f) return;
     const float delta = newValue - previous;
     if (delta == 0.0f) return;
-    if (juce::MessageManager::getInstanceWithoutCreating() != nullptr
-        && juce::MessageManager::getInstanceWithoutCreating()->isThisTheMessageThread())
+    if (inputGestureOpen_.load())
+    {   // a user edit in this plug-in's own UI: couple inside the edit
         applyLinkDelta(delta);
-    else
-    {   // audio thread (host automation): no work here, the timer applies it on the message thread
-        float old = pendingDelta_.load();
-        while (!pendingDelta_.compare_exchange_weak(old, old + delta)) {}
+        return;
     }
+    float old = pendingDelta_.load();
+    while (!pendingDelta_.compare_exchange_weak(old, old + delta)) {}
+    if (juce::Thread::getCurrentThreadId() != audioThread_.load(std::memory_order_relaxed))
+        triggerAsyncUpdate(); // message loop, outside the delivering call; the 50 ms timer is the fallback for the audio thread
 }
 void Taper102AudioProcessor::applyPendingLink()
 {
@@ -118,10 +143,12 @@ void Taper102AudioProcessor::applyLinkDelta(double deltaDb)
     const auto& range = parameters.getParameterRange("output_db");
     const double current = static_cast<double>(output->convertFrom0to1(output->getValue()));
     const float target = static_cast<float>(juce::jlimit(static_cast<double>(range.start), static_cast<double>(range.end), current - deltaDb));
+    const bool inGesture = inputGestureOpen_.load();
     applyingLink_ = true;
-    output->beginChangeGesture();
+    if (inGesture) { if (!outputGestureOpen_) { output->beginChangeGesture(); outputGestureOpen_ = true; } }
+    else output->beginChangeGesture();
     output->setValueNotifyingHost(output->convertTo0to1(target));
-    output->endChangeGesture();
+    if (!inGesture) output->endChangeGesture();
     applyingLink_ = false;
 }
 
@@ -344,8 +371,8 @@ void Taper102AudioProcessor::process(juce::AudioBuffer<float>& buffer, bool bypa
         outputPeaks_[c].store(std::max(out[c], outputPeaks_[c].load(std::memory_order_relaxed) * decay), std::memory_order_relaxed);
     }
 }
-void Taper102AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) { process(buffer, false); }
-void Taper102AudioProcessor::processBlockBypassed(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) { process(buffer, true); }
+void Taper102AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) { audioThread_.store(juce::Thread::getCurrentThreadId(), std::memory_order_relaxed); process(buffer, false); }
+void Taper102AudioProcessor::processBlockBypassed(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) { audioThread_.store(juce::Thread::getCurrentThreadId(), std::memory_order_relaxed); process(buffer, true); }
 
 float Taper102AudioProcessor::getInputPeak(int channel) const noexcept
 {

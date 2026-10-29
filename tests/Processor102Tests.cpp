@@ -1,4 +1,5 @@
 #include "PluginProcessor102.h"
+#include "PluginEditor102.h"
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -32,6 +33,16 @@ void set(Taper102AudioProcessor& p, const char* id, float native)
 {
     auto* parameter = p.parameters.getParameter(id);
     parameter->setValueNotifyingHost(parameter->convertTo0to1(native));
+    p.applyPendingLink(); // a host-style delivery (no gesture) couples from the message loop; tests flush it explicitly
+}
+juce::Slider* nthSlider(juce::Component& c, int& index)
+{
+    for (auto* child : c.getChildren())
+    {
+        if (auto* s = dynamic_cast<juce::Slider*>(child)) { if (index-- == 0) return s; }
+        if (auto* s = nthSlider(*child, index)) return s;
+    }
+    return nullptr;
 }
 float value(Taper102AudioProcessor& p, const char* id) { return p.parameters.getRawParameterValue(id)->load(); }
 juce::MemoryBlock encode(juce::ValueTree state)
@@ -357,6 +368,75 @@ int main()
         require(near(value(q, "output_db"), 0), "off-thread Input change is not applied on that thread");
         q.applyPendingLink();
         require(near(value(q, "output_db"), -4), "deferred Input change moves Output on the message thread");
+    }
+
+    // Link, host-style delivery: a change that arrives without a gesture (the host setting Input from its UI or automation) is NOT applied
+    // inside the delivering call (the VST3 / AU wrappers swallow nested changes made during a host-initiated one); the message loop applies it.
+    {
+        Taper102AudioProcessor p;
+        auto* in = p.parameters.getParameter("input_db");
+        p.parameters.getParameter("link")->setValueNotifyingHost(1.0f);
+        in->setValueNotifyingHost(in->convertTo0to1(12.0f));
+        require(near(value(p, "output_db"), 0), "host-style Input change does not move Output inside the delivering call");
+        juce::MessageManager::getInstance()->runDispatchLoopUntil(100);
+        require(near(value(p, "output_db"), -12), "host-style Input change moves Output from the message loop");
+        in->setValueNotifyingHost(in->convertTo0to1(-3.0f));
+        juce::MessageManager::getInstance()->runDispatchLoopUntil(100);
+        require(near(value(p, "output_db"), -12 + 15), "second host-style move is relative to the last applied Input");
+        in->setValueNotifyingHost(in->convertTo0to1(0.0f)); in->setValueNotifyingHost(in->convertTo0to1(1.0f)); in->setValueNotifyingHost(in->convertTo0to1(5.0f));
+        juce::MessageManager::getInstance()->runDispatchLoopUntil(100);
+        require(near(value(p, "output_db"), 3 - 8), "several deliveries before the loop run accumulate exactly");
+
+        // The same through the timer fallback: a delivery on the audio thread.
+        Taper102AudioProcessor q; q.parameters.getParameter("link")->setValueNotifyingHost(1.0f);
+        q.prepareToPlay(48000, 256);
+        juce::AudioBuffer<float> audio(2, 256); juce::MidiBuffer midi;
+        q.processBlock(audio, midi); // records this thread as the audio thread
+        auto* qin = q.parameters.getParameter("input_db");
+        qin->setValueNotifyingHost(qin->convertTo0to1(6.0f));
+        juce::MessageManager::getInstance()->runDispatchLoopUntil(200);
+        require(near(value(q, "output_db"), -6), "audio-thread Input change moves Output via the timer");
+    }
+
+    // Link, editor drag: the real editor's Input slider driven in many small steps inside a gesture. Output follows every step (parameter
+    // and knob), the output gesture opens once and closes with Input's, and nothing is applied twice.
+    {
+        Taper102AudioProcessor p;
+        p.parameters.getParameter("link")->setValueNotifyingHost(1.0f);
+        struct Counter final : juce::AudioProcessorParameter::Listener
+        {
+            int begins = 0, ends = 0;
+            void parameterValueChanged(int, float) override {}
+            void parameterGestureChanged(int, bool starting) override { (starting ? begins : ends)++; }
+        } counter;
+        p.parameters.getParameter("output_db")->addListener(&counter);
+        std::unique_ptr<juce::AudioProcessorEditor> editor(p.createEditor());
+        editor->setSize(editor->getWidth(), editor->getHeight());
+        int i0 = 0, i1 = 1;
+        auto* inSlider = nthSlider(*editor, i0);
+        auto* outSlider = nthSlider(*editor, i1);
+        require(inSlider != nullptr && outSlider != nullptr, "editor exposes the Input and Output sliders");
+        auto* in = p.parameters.getParameter("input_db");
+        in->beginChangeGesture();
+        bool followed = true;
+        double previousOut = 0;
+        for (int step = 1; step <= 120; ++step)
+        {
+            const double db = step * 0.1;                      // 0 -> +12 dB in 0.1 dB steps
+            inSlider->setValue(db, juce::sendNotificationSync);
+            followed = followed && near(value(p, "output_db"), static_cast<float>(-db))
+                && std::abs(outSlider->getValue() + db) < 0.011 && outSlider->getValue() <= previousOut + 1e-9;
+            previousOut = outSlider->getValue();
+        }
+        require(followed, "Output follows every step of an Input drag (parameter and knob)");
+        in->endChangeGesture();
+        juce::MessageManager::getInstance()->runDispatchLoopUntil(100);
+        require(near(value(p, "input_db"), 12) && near(value(p, "output_db"), -12), "drag ends at Input +12 / Output -12, nothing applied twice");
+        require(counter.begins == 1 && counter.ends == 1, "Output has one gesture for the whole Input drag");
+        p.parameters.getParameter("output_db")->removeListener(&counter);
+        // a typed value / double-click reset is a complete gesture and couples as well
+        in->beginChangeGesture(); in->setValueNotifyingHost(in->convertTo0to1(2.0f)); in->endChangeGesture();
+        require(near(value(p, "output_db"), -2), "complete-gesture Input edit couples");
     }
 
     // Bypass: latency-aligned dry through the parameter and through processBlockBypassed; toggling mid-stream stays finite and click-free.

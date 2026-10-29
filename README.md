@@ -30,11 +30,11 @@ ad-hoc signed and not notarized. The Windows package contains an unsigned x64 VS
 
 | Control | Range | What it controls |
 |---|---|---|
-| Setup | 456 15 ips NAB / 456 30 ips AES / ATR Master 15 ips IEC / ATR Master 30 ips AES (default 456 15 ips NAB) | The machine setup, aligned as in the manual. Each fixes the speed, the equalisation standard, the tape, the tape's aligned operating level (456 at 370 nWb/m, ATR Master at 320) and the bias at the aligned point. |
+| Setup | 456 15 ips NAB / 456 30 ips AES / ATR Master 15 ips IEC / ATR Master 30 ips AES (default 456 15 ips NAB) | The machine setup, aligned as in the manual. Each fixes the speed, the equalisation standard, the tape, the tape's aligned operating level (456 at 370 nWb/m, ATR Master at 320) and the bias at the aligned point. 456 15 NAB has the most tape colour (about +1.4 dB bump near 40 Hz, −0.7 dB at 20 kHz, 0.19 % THD at 0 VU, 3 % at +9.5 dB over 0 VU). 456 30 AES is cleaner and more open (0.11 %, smaller bump near 85 Hz, flat to 20 kHz). ATR 15 IEC saturates like 456 at 15 ips (0.175 %) with a smaller low bump (+0.6 dB). ATR 30 AES is the cleanest and flattest (0.13 %). Hover an option for its description. |
 | Input | −24 … +24 dB (default 0) | Level into the record stage. At 0 dB a tone at the 0 VU level records at the operating level; each dB more drives the tape harder. |
 | Output | −24 … +24 dB (default 0) | Level after the reproduce stage. At 0 dB, 0 VU in leaves at 0 VU in every setup. |
 | Link | Off / On (default Off) | While on, an Input edit of d dB moves Output by −d dB (clamped), so driving the tape harder keeps the level roughly the same. Automating Input with Link on also moves Output; restoring a saved state never couples them. |
-| 0 VU dBFS | −18 / −15 / −12 / −9 (default −12) | Which digital level counts as the machine's 0 VU, so a higher setting hits the tape harder at the same dBFS. The chain is calibrated to −18; the plug-in attenuates before the chain and restores the level after it. |
+| 0 VU dBFS | −18 / −15 / −12 / −9 (default −12) | Which digital level the machine treats as 0 VU. −18 drives the tape hardest; −9 is the cleanest at the same dBFS (456 at 15 ips reaches 3 % distortion at −8.5 dBFS with −18 and at −2.5 dBFS with −12). The chain is calibrated to −18; the plug-in attenuates before the chain and restores the level after it. |
 | Bypass | Off / On (default Off) | Plays the input instead of the tape, delayed by the reported latency so switching never shifts timing, with a short crossfade. |
 | IN / OUT meters | Indicator | Stereo sample-peak bars of the real input and output, in dBFS, with a tick at the 0 VU setting. |
 
@@ -114,6 +114,7 @@ electronics, alignment tables, tape medium and its tables).
 | Target | Coverage |
 |---|---|
 | `taper102_processor_tests` | Parameter IDs, ranges and defaults, state save and restore, schema 1 migration, Link and 0 VU behaviour, bypass, latency, setups, bus layouts, sample rates, control changes and audio-thread allocations. |
+| `taper102_hosted_test <Taper 102.vst3> [<Taper 102.component>]` | Loads the built VST3 (and, on macOS, the installed AU) through JUCE's plug-in hosting and checks that Link moves Output as a host sees it, for host message-thread and audio-thread automation. Runs under CTest on macOS (VST3). |
 | `taper102_snapshot docs/editor.png [editorScale pixelScale helpId] [--setup2]` | Renders the editor without a host, optionally scaled, with a control's hover help or the 30 ips setup shown. |
 
 ## Validation

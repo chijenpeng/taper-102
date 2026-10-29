@@ -228,7 +228,16 @@ public:
         setName(title);
         setWantsKeyboardFocus(true);
         helpFor(*this, title, help);
+        rowHelp_ = juce::String::fromUTF8(help);
         attachment_.sendInitialUpdate();
+    }
+    // Per-option hover help: hovering option i shows "<ROW> · <option>" with texts[i]; the row label and gaps show the row's own help.
+    void setOptionHelp(std::vector<juce::String> texts) { optionHelp_ = std::move(texts); }
+    void showOptionHelp(int index)
+    {
+        const bool own = index >= 0 && static_cast<std::size_t>(index) < optionHelp_.size();
+        getProperties().set("helpTitle", own ? (title_ + juce::String::fromUTF8(" \xC2\xB7 ") + choices_[index]).toUpperCase() : title_.toUpperCase());
+        getProperties().set("help", own ? optionHelp_[static_cast<std::size_t>(index)] : rowHelp_);
     }
     void setLabelColumn(int width) { labelColumn_ = width; }
     int titleWidth() const { return std::max(labelColumn_, Theme::textWidth(Theme::labelFont(), title_) + labelGap); }
@@ -265,8 +274,8 @@ public:
         const int index = optionAt(event.x);
         if (index >= 0 && isAvailable(index, isForced())) attachment_.setValueAsCompleteGesture(static_cast<float>(index));
     }
-    void mouseMove(const juce::MouseEvent& event) override { hovered_ = optionAt(event.x); repaint(); }
-    void mouseExit(const juce::MouseEvent&) override { hovered_ = -1; repaint(); }
+    void mouseMove(const juce::MouseEvent& event) override { hovered_ = optionAt(event.x); showOptionHelp(hovered_); repaint(); }
+    void mouseExit(const juce::MouseEvent&) override { hovered_ = -1; showOptionHelp(-1); repaint(); }
     bool keyPressed(const juce::KeyPress& key) override
     {
         const int direction = key == juce::KeyPress::leftKey ? -1 : (key == juce::KeyPress::rightKey ? 1 : 0);
@@ -305,6 +314,8 @@ private:
     juce::StringArray choices_;
     Policy policy_;
     int selected_ = 0, hovered_ = -1;
+    juce::String rowHelp_;
+    std::vector<juce::String> optionHelp_;
     bool lastForced_ = false;
     juce::ParameterAttachment attachment_;
 };
@@ -381,12 +392,17 @@ struct Taper102AudioProcessorEditor::Impl final : juce::Component
         : processor(owner),
           input(owner.parameters,"input_db","INPUT","Level into the record stage. At 0 dB a tone at the 0 VU level records at the operating level; each dB more drives the tape harder. 456 15 NAB: 0.19% THD at 0 VU (0.05% of it second harmonic), 3% at +9.5 dB. Link ties Output to it.",levelText),
           output(owner.parameters,"output_db","OUTPUT","Level after the reproduce stage. At 0 dB, 0 VU in leaves at 0 VU in every setup. With Link on, Output follows Input.",levelText),
-          setup(owner.parameters,"setup","SETUP",{"456 15 NAB","456 30 AES","ATR 15 IEC","ATR 30 AES"},"Picks the machine setup, aligned as in the manual: tape, speed, EQ and the tape's operating level (456 at 370 nWb/m, ATR Master at 320). 456 15 NAB: 0.19% THD at 0 VU, +1.4 dB at 40 Hz, -0.7 dB at 20 kHz. 456 30 AES: 0.11%, flat to 20 kHz."),
+          setup(owner.parameters,"setup","SETUP",{"456 15 NAB","456 30 AES","ATR 15 IEC","ATR 30 AES"},"Picks tape, speed, EQ standard and the tape's aligned operating level (456 at 370 nWb/m, ATR Master at 320 nWb/m), as in the manual. Hover an option for what it does to the sound."),
           link(owner.parameters,"link","LINK",{"OFF","ON"},"Moves Output opposite to Input, dB for dB, so driving the tape harder keeps the level roughly the same (456, +12 dB: 1.5 dB quieter at 0 VU). Output stops at its ends. Automating Input moves Output too."),
-          ref(owner.parameters,"ref","0 VU DBFS",{"-18","-15","-12","-9"},"Sets which digital level counts as the machine's 0 VU, so a higher setting hits the tape harder at the same dBFS. 456 15 NAB: 3% THD at -8.5 dBFS with -18 and at -2.5 dBFS with -12 (default). Level through the plug-in is unchanged."),
+          ref(owner.parameters,"ref","0 VU DBFS",{"-18","-15","-12","-9"},"Which digital level the machine treats as 0 VU. -18 drives the tape hardest; -9 is the cleanest: 456 at 15 ips reaches 3% distortion at -8.5 dBFS with -18 and at -2.5 dBFS with -12."),
           path(owner.parameters,"bypass","BYPASS",{"OFF","ON"},"Plays the input instead of the tape, delayed by the reported latency so switching never shifts timing; a short crossfade avoids clicks."),
           meters(owner)
     {
+        setup.setOptionHelp({
+            juce::String::fromUTF8("Most tape colour: about +1.4 dB bump near 40 Hz, top slightly rolled (-0.7 dB at 20 kHz) and the most saturation: 0.19% THD at 0 VU, 3% at +9.5 dB over 0 VU."),
+            juce::String::fromUTF8("Cleaner and more open: 0.11% THD at 0 VU, a smaller bump moved up to about 85 Hz with tighter lows below it, flat to 20 kHz."),
+            juce::String::fromUTF8("Saturates like 456 at 15 ips (0.175% THD at 0 VU) but with a smaller low bump (+0.6 dB), so the low end is tighter."),
+            juce::String::fromUTF8("Cleanest and flattest setup: 0.13% THD at 0 VU.") });
         for (auto* component : std::array<juce::Component*,7>{&input,&output,&setup,&ref,&link,&path,&meters})
             addAndMakeVisible(component);
         showHelpFor(nullptr);
@@ -451,10 +467,19 @@ struct Taper102AudioProcessorEditor::Impl final : juce::Component
             repaint(helpArea);
         }
     }
-    void showHelpForParameter(const juce::String& id)
+    void showHelpForParameter(const juce::String& idAndOption)   // "setup" or "setup:2" (option's own help, for snapshots)
     {
+        const auto id = idAndOption.upToFirstOccurrenceOf(":", false, false);
+        const int option = idAndOption.contains(":") ? idAndOption.fromFirstOccurrenceOf(":", false, false).getIntValue() : -1;
         for (auto* child : getChildren())
-            if (child->getComponentID() == id) { showHelpFor(child); return; }
+            if (child->getComponentID() == id)
+            {
+                auto* row = dynamic_cast<OptionRow*>(child);
+                if (row != nullptr) row->showOptionHelp(option);
+                showHelpFor(child);
+                if (row != nullptr) row->showOptionHelp(-1);
+                return;
+            }
         showHelpFor(nullptr);
     }
     Taper102AudioProcessor& processor;

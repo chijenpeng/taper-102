@@ -17,7 +17,8 @@
 // of the chain: it is a latency-aligned dry crossfade in this class.
 class Taper102AudioProcessor final : public juce::AudioProcessor,
                                       private juce::AudioProcessorValueTreeState::Listener,
-                                      private juce::Timer
+                                      private juce::Timer,
+                                      private juce::AsyncUpdater
 {
 public:
     static constexpr int stateSchemaVersion = 2;
@@ -67,18 +68,29 @@ public:
     juce::AudioProcessorValueTreeState parameters;
 
     // Link: while the "link" parameter is on, a change of Input by d dB moves the Output parameter by -d dB (clamped to its range). The
-    // Output parameter itself is a normal gain; there is no hidden compensation in the DSP. User edits arrive on the message thread and are
-    // applied at once; a change delivered on another thread (host automation on the audio thread) is accumulated and applied by a timer.
-    // Restoring a state never couples. Automating Input with Link on therefore also moves Output.
+    // Output parameter itself is a normal gain; there is no hidden compensation in the DSP. Restoring a state never couples; toggling Link
+    // moves nothing; automating Input with Link on also moves Output.
+    //   - A user edit (an Input gesture is open: knob drag, typed value, double-click) couples synchronously inside that edit, so Output
+    //     follows every step, and Output's gesture stays open until Input's ends.
+    //   - Any other delivery (host automation, or the host setting the parameter from its own UI) must not be applied inside the call that
+    //     delivered it: the VST3 and AU wrappers swallow a parameter change made while a host-initiated change is being applied, so the
+    //     host would never see Output move. It is accumulated and applied from the message loop (AsyncUpdater) at once, or, when it
+    //     arrived on the audio thread, by the 50 ms timer.
+    // Thread identity is never assumed from MessageManager (a host may create the plug-in on a thread that is not its UI thread).
     void applyPendingLink();
 
 private:
     void parameterChanged(const juce::String& id, float newValue) override;
     void timerCallback() override { applyPendingLink(); }
+    void handleAsyncUpdate() override { applyPendingLink(); }
     void applyLinkDelta(double deltaDb);
+    void inputGesture(bool starting);
+    struct GestureWatcher;
+    std::unique_ptr<GestureWatcher> gestureWatcher_;
     std::atomic<float> lastInput_ { 0.0f }, pendingDelta_ { 0.0f };
-    std::atomic<bool> restoring_ { false };
-    bool applyingLink_ = false;
+    std::atomic<bool> restoring_ { false }, inputGestureOpen_ { false };
+    std::atomic<juce::Thread::ThreadID> audioThread_ { nullptr };
+    bool applyingLink_ = false, outputGestureOpen_ = false;
 
     struct ControlPusher;
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();

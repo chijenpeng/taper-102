@@ -85,13 +85,25 @@ endif()
 juce_add_console_app(taper102_processor_tests)
 target_sources(taper102_processor_tests PRIVATE tests/Processor102Tests.cpp ${TAPER102_SOURCES})
 target_include_directories(taper102_processor_tests PRIVATE ${TAPER102_INCLUDES})
-target_compile_definitions(taper102_processor_tests PRIVATE ${TAPER102_DEFS})
+target_compile_definitions(taper102_processor_tests PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1 ${TAPER102_DEFS})
 target_link_libraries(taper102_processor_tests
     PRIVATE
         Taper102Assets
         juce::juce_audio_utils
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags)
+
+# Hosted wrapper test: loads the built VST3 (and, with a second argument on macOS, the registered AU) through JUCE's plug-in hosting and
+# checks Link as a host sees it.
+juce_add_console_app(taper102_hosted_test)
+target_sources(taper102_hosted_test PRIVATE tests/hosted102.cpp)
+target_compile_definitions(taper102_hosted_test PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1 JUCE_PLUGINHOST_VST3=1 JUCE_PLUGINHOST_AU=1 ${TAPER102_DEFS})
+target_link_libraries(taper102_hosted_test
+    PRIVATE
+        juce::juce_audio_utils
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags)
+add_dependencies(taper102_hosted_test Taper102_VST3)
 
 # Renders the editor to a PNG (docs/editor.png) and can show any control's hover help.
 # Run it from the repository root.
@@ -108,3 +120,6 @@ target_link_libraries(taper102_snapshot
 
 enable_testing()
 add_test(NAME taper102_processor_tests COMMAND taper102_processor_tests)
+if(APPLE)
+    add_test(NAME taper102_hosted_link COMMAND taper102_hosted_test "$<TARGET_BUNDLE_DIR:Taper102_VST3>")
+endif()
